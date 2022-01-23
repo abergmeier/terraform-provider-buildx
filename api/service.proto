@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+option go_package = "github.com/abergmeier/terraform-provider-buildx/pkg/grpc/api";
+
+message DriverInfo {
+    string name = 1;
+}
+
+message BootByInstanceNameResponse {
+}
+
+message InstanceByNameRequest {
+    string instance = 1;
+    string context_path_hash = 2;
+}
+
+message InstanceByNameResponse {
+    repeated DriverInfo driver_infos = 1;
+}
+
+service Drivers {
+    rpc InstanceOrDefaultByName(InstanceByNameRequest) returns (InstanceByNameResponse) {}
+}
+
+service Buildx {
+   rpc BootByInstanceName(InstanceByNameRequest) returns (BootByInstanceNameResponse) {}
+}
