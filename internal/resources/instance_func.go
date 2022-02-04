@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/abergmeier/terraform-provider-buildx/internal/meta"
-	"github.com/abergmeier/terraform-provider-buildx/pkg/buildx/commands"
+	"github.com/docker/buildx/commands"
 	"github.com/docker/buildx/driver"
 	"github.com/docker/buildx/store"
 	"github.com/docker/buildx/store/storeutil"

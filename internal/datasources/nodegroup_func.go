@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/abergmeier/terraform-provider-buildx/pkg/buildx/commands"
+	"github.com/docker/buildx/commands"
 	"github.com/docker/buildx/store/storeutil"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/context/store"

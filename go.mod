@@ -6,8 +6,8 @@ require (
 	github.com/docker/buildx v0.7.1
 	github.com/docker/cli v20.10.8+incompatible
 	github.com/docker/docker v20.10.7+incompatible
+	github.com/hashicorp/go-cty v1.4.1-0.20200414143053-d3edf31b6320
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.10.1
-	github.com/opencontainers/image-spec v1.0.2-0.20210819154149-5ad6f50d6283
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.8.1
 	github.com/theupdateframework/notary v0.6.1
@@ -29,11 +29,15 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.1 // indirect
+	github.com/cloudflare/cfssl v1.6.1 // indirect
+	github.com/compose-spec/compose-go v1.0.5 // indirect
+	github.com/compose-spec/godotenv v1.1.0 // indirect
 	github.com/containerd/console v1.0.3 // indirect
 	github.com/containerd/containerd v1.5.5 // indirect
 	github.com/containerd/continuity v0.1.0 // indirect
 	github.com/containerd/typeurl v1.0.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/distribution/distribution/v3 v3.0.0-20210316161203-a01c71e2477e // indirect
 	github.com/docker/compose-on-kubernetes v0.4.19-0.20190128150448-356b2919c496 // indirect
 	github.com/docker/distribution v2.7.1+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.6.4 // indirect
@@ -52,14 +56,15 @@ require (
 	github.com/google/go-cmp v0.5.6 // indirect
 	github.com/google/gofuzz v1.1.0 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
+	github.com/google/uuid v1.2.0 // indirect
 	github.com/googleapis/gnostic v0.5.5 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
-	github.com/grpc-ecosystem/go-grpc-middleware v1.2.0 // indirect
+	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0 // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
 	github.com/hashicorp/go-checkpoint v0.5.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
-	github.com/hashicorp/go-cty v1.4.1-0.20200414143053-d3edf31b6320 // indirect
+	github.com/hashicorp/go-cty-funcs v0.0.0-20200930094925-2721b1e36840 // indirect
 	github.com/hashicorp/go-hclog v0.16.1 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-plugin v1.4.1 // indirect
@@ -77,10 +82,13 @@ require (
 	github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
+	github.com/jhump/protoreflect v1.8.2 // indirect
+	github.com/jinzhu/gorm v1.9.16 // indirect
 	github.com/json-iterator/go v1.1.11 // indirect
 	github.com/klauspost/compress v1.13.5 // indirect
 	github.com/mattn/go-colorable v0.1.6 // indirect
 	github.com/mattn/go-isatty v0.0.12 // indirect
+	github.com/mattn/go-shellwords v1.0.12 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369 // indirect
 	github.com/miekg/pkcs11 v1.0.3 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
@@ -99,6 +107,7 @@ require (
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/oklog/run v1.0.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
+	github.com/opencontainers/image-spec v1.0.2-0.20210819154149-5ad6f50d6283 // indirect
 	github.com/opencontainers/runc v1.0.1 // indirect
 	github.com/pelletier/go-toml v1.9.4 // indirect
 	github.com/prometheus/client_golang v1.11.0 // indirect
@@ -112,6 +121,9 @@ require (
 	github.com/tonistiigi/units v0.0.0-20180711220420-6950e57a87ea // indirect
 	github.com/tonistiigi/vt100 v0.0.0-20210615222946-8066bb97264f // indirect
 	github.com/vmihailenco/msgpack v4.0.4+incompatible // indirect
+	github.com/xeipuuv/gojsonpointer v0.0.0-20180127040702-4e3ac2762d5f // indirect
+	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
+	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
 	github.com/zclconf/go-cty v1.9.1 // indirect
 	go.opentelemetry.io/contrib v0.21.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.21.0 // indirect
@@ -128,7 +140,7 @@ require (
 	go.opentelemetry.io/proto/otlp v0.9.0 // indirect
 	golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e // indirect
 	golang.org/x/net v0.0.0-20210520170846-37e1c6afe023 // indirect
-	golang.org/x/oauth2 v0.0.0-20210402161424-2e8d93401602 // indirect
+	golang.org/x/oauth2 v0.0.0-20210427180440-81ed05c6b58c // indirect
 	golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c // indirect
 	golang.org/x/term v0.0.0-20210220032956-6a3ed077a48d // indirect
 	golang.org/x/text v0.3.6 // indirect
@@ -154,3 +166,5 @@ replace (
 	go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace => github.com/tonistiigi/opentelemetry-go-contrib/instrumentation/net/http/httptrace/otelhttptrace v0.0.0-20210714055410-d010b05b4939
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp => github.com/tonistiigi/opentelemetry-go-contrib/instrumentation/net/http/otelhttp v0.0.0-20210714055410-d010b05b4939
 )
+
+replace github.com/docker/buildx v0.7.1 => github.com/abergmeier/buildx v0.0.0-20220204214346-27e3d1c36a03

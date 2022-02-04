@@ -4,8 +4,8 @@ import (
 	"context"
 	"net"
 
-	"github.com/abergmeier/terraform-provider-buildx/pkg/buildx/commands"
 	"github.com/abergmeier/terraform-provider-buildx/pkg/grpc/api"
+	"github.com/docker/buildx/commands"
 	"github.com/docker/buildx/driver"
 	"github.com/docker/cli/cli/command"
 	"google.golang.org/grpc"
