@@ -7,12 +7,15 @@ import (
 	"os"
 	"time"
 
+	"github.com/abergmeier/terraform-provider-buildx/internal/consolefile"
 	"github.com/abergmeier/terraform-provider-buildx/internal/meta"
 	"github.com/docker/buildx/commands"
 	"github.com/docker/buildx/driver"
 	"github.com/docker/buildx/store"
 	"github.com/docker/buildx/store/storeutil"
+	"github.com/docker/buildx/util/progress"
 	"github.com/docker/cli/cli/command"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
@@ -95,6 +98,7 @@ func createInstanceFromOptions(ctx context.Context, dockerCli command.Cli, in cr
 
 	driverName := in.driver
 
+	ctx = tflog.With(ctx, "driver.name", driverName)
 	if driver.GetFactory(driverName, true) == nil {
 		return errors.Errorf("failed to find driver %q", in.driver)
 	}
@@ -106,6 +110,7 @@ func createInstanceFromOptions(ctx context.Context, dockerCli command.Cli, in cr
 	defer release()
 
 	name := in.name
+	ctx = tflog.With(ctx, "nodegroup.name", name)
 
 	ng, err := txn.NodeGroupByName(name)
 	if err != nil {
@@ -132,6 +137,7 @@ func createInstanceFromOptions(ctx context.Context, dockerCli command.Cli, in cr
 	var ep string
 
 	if len(args) > 0 {
+		ctx = tflog.With(ctx, "endpoint", args[0])
 		ep, err = commands.ValidateEndpoint(dockerCli, args[0])
 		if err != nil {
 			return err
@@ -178,7 +184,15 @@ func createInstanceFromOptions(ctx context.Context, dockerCli command.Cli, in cr
 	}
 
 	if in.bootstrap {
-		if _, err = commands.Boot(ctx, ngi); err != nil {
+
+		cf := consolefile.WithPrefix(ctx, os.Stderr, tflog.Info)
+		printer := progress.NewPrinter(context.TODO(), cf, "auto")
+		if _, err = commands.BootWithWriter(ctx, ngi, func(prefix string, force bool) progress.Writer {
+			return progress.WithPrefix(printer, prefix, true)
+		}); err != nil {
+			return err
+		}
+		if err := printer.Wait(); err != nil {
 			return err
 		}
 	}
