@@ -204,10 +204,12 @@ func createInstanceFromOptions(ctx context.Context, dockerCli command.Cli, txn *
 	}
 
 	m := in.driverOpts
+	tflog.Trace(ctx, "Update NodeGroup")
 	if err := ng.Update("", ep, in.platform, len(args) > 0, false, flags, in.configFile, m); err != nil {
 		return err
 	}
 
+	tflog.Trace(ctx, "Save Transaction")
 	if err := txn.Save(ng); err != nil {
 		return err
 	}
@@ -217,6 +219,7 @@ func createInstanceFromOptions(ctx context.Context, dockerCli command.Cli, txn *
 	timeoutCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
+	tflog.Trace(ctx, "Load NodeGroup Data")
 	if err = commands.LoadNodeGroupData(timeoutCtx, dockerCli, ngi); err != nil {
 		return err
 	}
