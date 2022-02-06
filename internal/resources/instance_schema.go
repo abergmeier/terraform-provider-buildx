@@ -63,10 +63,18 @@ func InstanceResource() *schema.Resource {
 		Schema: map[string]*schema.Schema{
 			"name": {
 				Type:             schema.TypeString,
-				Required:         true,
+				Optional:         true,
 				ForceNew:         true,
 				Description:      `Builder instance name`,
 				ValidateDiagFunc: validateName,
+				ExactlyOneOf:     []string{"name", "generate_name"},
+			},
+			"generate_name": {
+				Type:         schema.TypeBool,
+				Optional:     true,
+				ForceNew:     true,
+				Description:  `Generate a Build instance name`,
+				ExactlyOneOf: []string{"name", "generate_name"},
 			},
 			"context": {
 				Type:          schema.TypeString,
@@ -102,6 +110,11 @@ func InstanceResource() *schema.Resource {
 				Optional:    true,
 				ForceNew:    true,
 				Description: `Boot builder after creation`,
+			},
+			"generated_name": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: `Result of name generation`,
 			},
 		},
 		Description: `Makes a new builder instance pointing to a docker context or endpoint, where context is the name of a context from ` + "`docker context ls`" + ` and endpoint is the address for docker socket (eg. ` + "`DOCKER_HOST`" + ` value).

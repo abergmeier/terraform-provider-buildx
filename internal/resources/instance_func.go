@@ -42,7 +42,18 @@ type rmOptions struct {
 }
 
 func createInstance(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	name := d.Get("name").(string)
+	dockerCli := m.(*meta.Data).Cli
+	tflog.Trace(ctx, "Getting the Store")
+	txn, release, err := storeutil.GetStore(dockerCli)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	defer release()
+
+	name, err := handleName(d, txn)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	args := []string{}
 	dockerContext := d.Get("context").(string)
@@ -72,9 +83,7 @@ func createInstance(ctx context.Context, d *schema.ResourceData, m interface{}) 
 		opts[k] = v.(string)
 	}
 
-	dockerCli := m.(*meta.Data).Cli
-
-	err := createInstanceFromOptions(ctx, dockerCli, createOptions{
+	err = createInstanceFromOptions(ctx, dockerCli, txn, createOptions{
 		name:         name,
 		driver:       driver["name"].(string),
 		nodeName:     "",
@@ -94,24 +103,51 @@ func createInstance(ctx context.Context, d *schema.ResourceData, m interface{}) 
 	return nil
 }
 
-func createInstanceFromOptions(ctx context.Context, dockerCli command.Cli, in createOptions, args []string) error {
+func handleName(d *schema.ResourceData, txn *store.Txn) (name string, err error) {
+	if d.Get("generate_name").(bool) {
+		name, err = store.GenerateName(txn)
+		if err != nil {
+			return "", err
+		}
+		if name == "" {
+			panic("GenerateName call returned empty name!")
+		}
+		err = d.Set("generated_name", name)
+		if err != nil {
+			return "", err
+		}
+		err = d.Set("name", nil)
+		if err != nil {
+			return "", err
+		}
+	} else {
+		err = d.Set("generated_name", nil)
+		if err != nil {
+			return "", err
+		}
+		name = d.Get("name").(string)
+		if name == "" {
+			return "", errors.New("Either generate_name needs to be set to true or a name needs to be specified.")
+		}
+	}
+
+	return
+}
+
+func createInstanceFromOptions(ctx context.Context, dockerCli command.Cli, txn *store.Txn, in createOptions, args []string) error {
 
 	driverName := in.driver
 
 	ctx = tflog.With(ctx, "driver.name", driverName)
+	tflog.Trace(ctx, "Get Factory for Driver")
 	if driver.GetFactory(driverName, true) == nil {
 		return errors.Errorf("failed to find driver %q", in.driver)
 	}
 
-	txn, release, err := storeutil.GetStore(dockerCli)
-	if err != nil {
-		return err
-	}
-	defer release()
-
 	name := in.name
 	ctx = tflog.With(ctx, "nodegroup.name", name)
 
+	tflog.Trace(ctx, "Get NodeGroup")
 	ng, err := txn.NodeGroupByName(name)
 	if err != nil {
 		if os.IsNotExist(errors.Cause(err)) {
@@ -138,6 +174,7 @@ func createInstanceFromOptions(ctx context.Context, dockerCli command.Cli, in cr
 
 	if len(args) > 0 {
 		ctx = tflog.With(ctx, "endpoint", args[0])
+		tflog.Trace(ctx, "Validate Endpoint")
 		ep, err = commands.ValidateEndpoint(dockerCli, args[0])
 		if err != nil {
 			return err
@@ -147,6 +184,7 @@ func createInstanceFromOptions(ctx context.Context, dockerCli command.Cli, in cr
 			return errors.Errorf("could not create a builder instance with TLS data loaded from environment. Please use `docker context create <context-name>` to create a context for current environment and then create a builder instance with `docker buildx create <context-name>`")
 		}
 
+		tflog.Trace(ctx, "Get Endpoint")
 		ep, err = storeutil.GetCurrentEndpoint(dockerCli)
 		if err != nil {
 			return err
@@ -201,7 +239,17 @@ func createInstanceFromOptions(ctx context.Context, dockerCli command.Cli, in cr
 }
 
 func deleteInstance(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	dockerCli := m.(*meta.Data).Cli
+	tflog.Trace(ctx, "Getting the Store")
+	txn, release, err := storeutil.GetStore(dockerCli)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	defer release()
 	name := d.Get("name").(string)
+	if name == "" {
+		name = d.Get("generated_name").(string)
+	}
 
 	buildkits := d.Get("buildkit").(*schema.Set).List()
 	keepState := false
@@ -210,24 +258,23 @@ func deleteInstance(ctx context.Context, d *schema.ResourceData, m interface{}) 
 		keepState = buildkit["keep_state"].(bool)
 	}
 
-	err := deleteInstanceByName(ctx, m.(*meta.Data).Cli, rmOptions{
+	err = deleteInstanceByName(ctx, dockerCli, txn, rmOptions{
 		builder:   name,
 		keepState: keepState,
 	})
 	return diag.FromErr(err)
 }
 
-func deleteInstanceByName(ctx context.Context, dockerCli command.Cli, in rmOptions) error {
-	txn, release, err := storeutil.GetStore(dockerCli)
-	if err != nil {
-		return err
-	}
-	defer release()
+func deleteInstanceByName(ctx context.Context, dockerCli command.Cli, txn *store.Txn, in rmOptions) error {
 
+	ctx = tflog.With(ctx, "nodegroup.name", in.builder)
+	tflog.Trace(ctx, "Get NodeGroup")
 	ng, err := storeutil.GetNodeGroup(txn, dockerCli, in.builder)
 	if err != nil {
 		return err
 	}
+	ctx = tflog.With(ctx, "keep_state", in.keepState)
+	tflog.Trace(ctx, "Rm")
 	err1 := commands.Rm(ctx, dockerCli, ng, in.keepState)
 	if err := txn.Remove(ng.Name); err != nil {
 		return err
@@ -237,30 +284,38 @@ func deleteInstanceByName(ctx context.Context, dockerCli command.Cli, in rmOptio
 }
 
 func readInstance(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
+	txn, release, err := storeutil.GetStore(m.(*meta.Data).Cli)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	defer release()
 	name := d.Get("name").(string)
-	err := readInstanceByName(ctx, m.(*meta.Data).Cli, name, d)
+	if name == "" {
+		name = d.Get("generated_name").(string)
+	}
+	err = readInstanceByName(ctx, txn, name, d)
 	return diag.FromErr(err)
 }
 
-func readInstanceByName(ctx context.Context, dockerCli command.Cli, name string, d *schema.ResourceData) error {
-	txn, release, err := storeutil.GetStore(dockerCli)
-	if err != nil {
-		return err
-	}
-	defer release()
+func readInstanceByName(ctx context.Context, txn *store.Txn, name string, d *schema.ResourceData) error {
 
+	tflog.Trace(ctx, "List")
 	ll, err := txn.List()
 	if err != nil {
 		return err
 	}
 
+	ctx = tflog.With(ctx, "nodegroup.name", name)
+	tflog.Trace(ctx, "Searching NodeGroup")
 	for _, ng := range ll {
+		tflog.Trace(ctx, "Found NodeGroup")
 		if ng.Name == name {
 			// Found
 			return nil
 		}
 	}
 
+	tflog.Trace(ctx, "NodeGroup not found")
 	// Seems like instance is gone
 	d.SetId("")
 	return nil
