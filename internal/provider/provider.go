@@ -28,6 +28,7 @@ func Provider() *schema.Provider {
 			"buildx_nodegroup": datasources.NodeGroupDataSource(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
+			"buildx_built":    resources.BuiltResource(),
 			"buildx_instance": resources.InstanceResource(),
 		},
 		Schema: map[string]*schema.Schema{},

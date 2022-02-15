@@ -305,7 +305,7 @@ func readInstanceByName(ctx context.Context, txn *store.Txn, name string, d *sch
 	tflog.Trace(ctx, "List")
 	ll, err := txn.List()
 	if err != nil {
-		return err
+		return fmt.Errorf("Listing nodes failed: %w", err)
 	}
 
 	ctx = tflog.With(ctx, "nodegroup.name", name)
