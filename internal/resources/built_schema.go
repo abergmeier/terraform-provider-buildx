@@ -5,8 +5,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/hashicorp/go-cty/cty"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/moby/buildkit/client"
 )
@@ -14,10 +12,11 @@ import (
 var (
 	validOutputTypesMap = map[string]interface{}{
 		client.ExporterDocker: nil,
+		client.ExporterImage:  nil,
 		client.ExporterLocal:  nil,
 		client.ExporterOCI:    nil,
 		client.ExporterTar:    nil,
-		"registry":            nil,
+		//"registry":            nil,
 	}
 	validOutputTypeList = []string{}
 
@@ -26,6 +25,10 @@ var (
 		"network.host":      nil,
 	}
 	validEntitlementsList = []string{}
+	dest                  = &schema.Schema{
+		Type:     schema.TypeString,
+		Optional: true,
+	}
 )
 
 func init() {
@@ -40,32 +43,26 @@ func init() {
 	sort.Strings(validEntitlementsList)
 }
 
-func outputEntry() *schema.Resource {
+func outputDockerResource() *schema.Resource {
 	return &schema.Resource{
 		Schema: map[string]*schema.Schema{
-			"type": {
+			"dest": dest,
+			"context": {
 				Type:     schema.TypeString,
-				Elem:     schema.TypeString,
-				Required: true,
-				ValidateDiagFunc: func(i interface{}, p cty.Path) diag.Diagnostics {
-					t := i.(string)
-					_, ok := validOutputTypesMap[t]
-					if !ok {
-						err := fmt.Errorf("Wrong output type: %s. Should be one of: %s", t, strings.Join(validOutputTypeList, ", "))
-						return diag.FromErr(err)
-					}
-					return nil
-				},
+				Optional: true,
+				ForceNew: true,
 			},
+		},
+	}
+}
+
+func outputImageResource() *schema.Resource {
+	return &schema.Resource{
+		Schema: map[string]*schema.Schema{
 			"name": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Description: "Image name",
-			},
-			"use_oci_mediatypes": {
-				Type:        schema.TypeBool,
-				Optional:    true,
-				Description: "use OCI mediatypes in configuration JSON instead of Docker's",
 			},
 			"unpack": {
 				Type:        schema.TypeBool,
@@ -94,9 +91,78 @@ func outputEntry() *schema.Resource {
 				Description: "choose [build dependency](https://github.com/moby/buildkit/blob/master/docs/build-repro.md#build-dependencies) version to export",
 				Default:     "all",
 			},
-			"dest": {
-				Type:     schema.TypeString,
+			"use_oci_mediatypes": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "use OCI mediatypes in configuration JSON instead of Docker's",
+			},
+		},
+	}
+}
+
+func outputLocalResource() *schema.Resource {
+	return &schema.Resource{
+		Schema: map[string]*schema.Schema{
+			"dest": dest,
+		},
+	}
+}
+
+func outputOciResource() *schema.Resource {
+	return &schema.Resource{
+		Schema: map[string]*schema.Schema{
+			"dest": dest,
+		},
+	}
+}
+
+func outputTarResource() *schema.Resource {
+	return &schema.Resource{
+		Schema: map[string]*schema.Schema{
+			"dest": dest,
+		},
+	}
+}
+
+func outputEntry() *schema.Resource {
+	return &schema.Resource{
+		Schema: map[string]*schema.Schema{
+			client.ExporterDocker: {
+				Type:     schema.TypeSet,
+				Elem:     outputDockerResource(),
 				Optional: true,
+				ForceNew: true,
+				ExactlyOneOf: []string{
+					"output.0." + client.ExporterDocker,
+					"output.0." + client.ExporterImage,
+					"output.0." + client.ExporterLocal,
+					"output.0." + client.ExporterOCI,
+					"output.0." + client.ExporterTar,
+				},
+			},
+			client.ExporterImage: {
+				Type:     schema.TypeSet,
+				Elem:     outputImageResource(),
+				Optional: true,
+				ForceNew: true,
+			},
+			client.ExporterLocal: {
+				Type:     schema.TypeSet,
+				Elem:     outputLocalResource(),
+				Optional: true,
+				ForceNew: true,
+			},
+			client.ExporterOCI: {
+				Type:     schema.TypeSet,
+				Elem:     outputOciResource(),
+				Optional: true,
+				ForceNew: true,
+			},
+			client.ExporterTar: {
+				Type:     schema.TypeSet,
+				Elem:     outputTarResource(),
+				Optional: true,
+				ForceNew: true,
 			},
 		},
 		Description: "For entries of `type` `gha`, GitHub Action credentials are automatically added to attrs.",
@@ -163,7 +229,9 @@ func BuiltResource() *schema.Resource {
 			"output": {
 				Type:        schema.TypeList,
 				Elem:        outputEntry(),
-				Optional:    true,
+				MaxItems:    1,
+				MinItems:    1,
+				Required:    true,
 				Description: "Output destination",
 				ForceNew:    true,
 			},

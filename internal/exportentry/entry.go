@@ -1,6 +1,7 @@
-package resources
+package exportentry
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -8,9 +9,10 @@ import (
 	"github.com/moby/buildkit/cmd/buildctl/build"
 )
 
-type ExportEntry struct {
+type Entry struct {
 	Type             string
 	Name             string
+	Context          string
 	Dest             string
 	OCIMediatypes    bool
 	Unpack           bool
@@ -20,13 +22,19 @@ type ExportEntry struct {
 	Buildinfo        string
 }
 
-type ExportEntries []ExportEntry
-
-func (ex *ExportEntry) ToBuildkit() (out client.ExportEntry, err error) {
+func (ex *Entry) ToBuildkit() (out client.ExportEntry, err error) {
+	if ex.Type == "" {
+		err = errors.New("unspecified type not supported")
+		return
+	}
 	exports := []string{
 		fmt.Sprintf("type=%s,dest=%s", ex.Type, ex.Dest),
 	}
 	parsed, err := build.ParseOutput(exports)
+	if err != nil {
+		err = fmt.Errorf("parsing output (%s) failed: %w", exports[0], err)
+		return
+	}
 	out.Output = parsed[0].Output
 	out.OutputDir = parsed[0].OutputDir
 	out.Type = ex.Type
@@ -41,17 +49,6 @@ func (ex *ExportEntry) ToBuildkit() (out client.ExportEntry, err error) {
 	setExportEntryStringValue(attrs, ex.Buildinfo, "buildinfo")
 	out.Attrs = attrs
 	return
-}
-
-func (ex *ExportEntries) ToBuildkit() (out []client.ExportEntry, err error) {
-	for _, e := range *ex {
-		ee, err := e.ToBuildkit()
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, ee)
-	}
-	return out, nil
 }
 
 func setExportEntryBoolValue(attrs map[string]string, v bool, attrName string) {

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/abergmeier/terraform-provider-buildx/internal/consolefile"
+	"github.com/abergmeier/terraform-provider-buildx/internal/exportentry"
 	"github.com/abergmeier/terraform-provider-buildx/internal/meta"
 	"github.com/containers/common/pkg/retry"
 	"github.com/containers/image/v5/transports"
@@ -44,7 +45,7 @@ type buildOptions struct {
 	imageIDFile  string
 	labels       map[string]string
 	networkMode  string
-	outputs      ExportEntries
+	outputs      exportentry.Entries
 	platforms    []string
 	secrets      []string
 	shmSize      dockeropts.MemBytes
@@ -85,50 +86,41 @@ func toCacheEntry(ce []interface{}) []client.CacheOptionsEntry {
 	return ces
 }
 
-func toExportEntryBoolValue(m map[string]interface{}, key string, v *bool) {
-	f, ok := m[key]
-	if !ok {
-		return
-	}
-	*v = f.(bool)
-}
-
-func toExportEntryIntValue(m map[string]interface{}, key string, v *int) {
-	f, ok := m[key]
-	if !ok {
-		return
-	}
-	*v = f.(int)
-}
-
-func toExportEntryStringValue(m map[string]interface{}, key string, v *string) {
-	f, ok := m[key]
-	if !ok {
-		return
-	}
-	*v = f.(string)
-}
-
-func toOutputOptions(v interface{}) ExportEntries {
+func toOutputOptions(v interface{}) (exportentry.Entries, error) {
 	if v == nil {
-		return nil
+		return nil, nil
 	}
 
 	vis := v.([]interface{})
-	out := make([]ExportEntry, len(vis))
+	out := make([]exportentry.Entry, 0, len(vis))
 	for i, v := range vis {
 		vd := v.(map[string]interface{})
-		out[i].Type = vd["type"].(string)
-		toExportEntryStringValue(vd, "name", &out[i].Name)
-		toExportEntryBoolValue(vd, "use_oci_mediatypes", &out[i].OCIMediatypes)
-		toExportEntryBoolValue(vd, "unpack", &out[i].Unpack)
-		toExportEntryStringValue(vd, "compression", &out[i].Compression)
-		toExportEntryIntValue(vd, "compression_level", &out[i].CompressionLevel)
-		toExportEntryBoolValue(vd, "force_compression", &out[i].ForceCompression)
-		toExportEntryStringValue(vd, "buildinfo", &out[i].Buildinfo)
-		toExportEntryStringValue(vd, "dest", &out[i].Dest)
+		for t, f := range exportentry.Extractors {
+			ei, _ := vd[t]
+			if ei == nil {
+				continue
+			}
+			l, err := f(ei)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, l...)
+		}
+
+		// We validate fields here since we cannot yet
+		// validate lists in Terraform
+		switch out[i].Type {
+		case client.ExporterDocker:
+			fallthrough
+		case client.ExporterOCI:
+			fallthrough
+		case client.ExporterTar:
+			if out[i].Dest == "" {
+				return nil, fmt.Errorf("Type %s needs argument dest set", out[i].Type)
+			}
+		}
 	}
-	return out
+	return out, nil
 }
 
 func toStringMap(mi map[string]interface{}) map[string]string {
@@ -163,9 +155,16 @@ func createBuilt(ctx context.Context, d *schema.ResourceData, m interface{}) dia
 	ba := d.Get("build_args").(map[string]interface{})
 	ll := d.Get("labels").(map[string]interface{})
 	tg := d.Get("tags").([]interface{})
-	outputs := toOutputOptions(d.Get("output"))
+	instance := d.Get("instance").(string)
+	outputs, err := toOutputOptions(d.Get("output"))
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	opt := buildOptions{
+		commonOptions: commonOptions{
+			builder: instance,
+		},
 		allow:          toStringSlice(al),
 		cacheFrom:      toCacheEntry(cacheFrom),
 		cacheTo:        toCacheEntry(cacheTo),
@@ -176,6 +175,7 @@ func createBuilt(ctx context.Context, d *schema.ResourceData, m interface{}) dia
 		tags:           toStringSlice(tg),
 		outputs:        outputs,
 	}
+
 	res, err := createBuiltWithOptions(dockerCli, opt)
 	if err != nil {
 		return diag.FromErr(err)
@@ -322,7 +322,10 @@ func createBuiltWithOptions(dockerCli command.Cli, in buildOptions) (res *buildR
 
 func deleteBuilt(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	dockerCli := m.(*meta.Data).Cli
-	outputs := toOutputOptions(d.Get("output"))
+	outputs, err := toOutputOptions(d.Get("output"))
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	for _, output := range outputs {
 		err := deleteBuiltImage(ctx, dockerCli, output)
@@ -333,7 +336,7 @@ func deleteBuilt(ctx context.Context, d *schema.ResourceData, m interface{}) dia
 	return nil
 }
 
-func transportName(output ExportEntry) (string, error) {
+func transportName(output exportentry.Entry) (string, error) {
 	var transportName string
 	switch output.Type {
 	case client.ExporterDocker:
@@ -352,18 +355,19 @@ func transportName(output ExportEntry) (string, error) {
 	return transportName, nil
 }
 
-func deleteBuiltImage(ctx context.Context, dockerCli command.Cli, output ExportEntry) error {
+func deleteBuiltImage(ctx context.Context, dockerCli command.Cli, output exportentry.Entry) error {
 
 	var reference string
 	switch output.Type {
 	case client.ExporterDocker:
 		fallthrough
-	case client.ExporterImage:
-		reference = output.Name
 	case client.ExporterOCI:
-		fallthrough
+		os.Remove(output.Dest)
+		return nil
 	case client.ExporterTar:
-		fallthrough
+		reference = output.Dest
+	case client.ExporterImage:
+		panic("ME")
 	case client.ExporterLocal:
 		dir, err := ioutil.ReadDir(output.Dest)
 		if err != nil {
