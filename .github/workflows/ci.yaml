@@ -1,0 +1,22 @@
+name: Test and coverage
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-go@v2
+        with:
+          go-version: '1.17'
+      - name: Run coverage
+      # Cannot do race testing because it needs CGO.
+        run: go test -coverprofile=coverage.txt -covermode=atomic -v ./...
+        env:
+          CGO_ENABLED: 0
+          TF_ACC: 1
+      - name: Upload coverage to Codecov
+        run: bash <(curl -s https://codecov.io/bash)
