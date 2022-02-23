@@ -2,13 +2,10 @@ package provider
 
 import (
 	"context"
-	"log"
-	"net"
 
 	"github.com/abergmeier/terraform-provider-buildx/internal/datasources"
 	"github.com/abergmeier/terraform-provider-buildx/internal/meta"
 	"github.com/abergmeier/terraform-provider-buildx/internal/resources"
-	"github.com/abergmeier/terraform-provider-buildx/pkg/grpc"
 	"github.com/docker/cli/cli/command"
 
 	cliflags "github.com/docker/cli/cli/flags"
@@ -24,7 +21,6 @@ import (
 func Provider() *schema.Provider {
 	provider := &schema.Provider{
 		DataSourcesMap: map[string]*schema.Resource{
-			"buildx_booted":    datasources.BootedDataSource(),
 			"buildx_nodegroup": datasources.NodeGroupDataSource(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
@@ -58,17 +54,9 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData, terraformVer
 		return nil, diag.FromErr(err)
 	}
 
-	lis, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
-
 	m := &meta.Data{
-		Cli:      dockerCli,
-		GRPCAddr: *lis.Addr().(*net.TCPAddr),
+		Cli: dockerCli,
 	}
-
-	go grpc.Serve(lis)
 
 	return m, nil
 }
