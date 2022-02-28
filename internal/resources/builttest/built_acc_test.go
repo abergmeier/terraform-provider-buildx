@@ -54,6 +54,27 @@ func TestAccBuilt_invalid_type(t *testing.T) {
 	})
 }
 
+func TestAccBuilt_image(t *testing.T) {
+	t.Parallel()
+
+	dir, err := ioutil.TempDir("", "acc_built")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(dir)
+	rName := acctest.RandStringFromCharSet(10, acctest.CharSetAlphaNum)
+
+	resource.Test(t, resource.TestCase{
+		Providers: testAccProviders,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccBuiltImage(rName, dir),
+				Check:  resource.ComposeTestCheckFunc(),
+			},
+		},
+	})
+}
+
 func TestAccBuilt_local(t *testing.T) {
 	t.Parallel()
 
@@ -163,6 +184,30 @@ resource "buildx_built" "foo" {
   ]
 }
 `, rName, dir)
+}
+
+func testAccBuiltImage(rName, dir string) string {
+	return fmt.Sprintf(`
+resource "buildx_instance" "foo" {
+  name = "test-basic-%s"
+  driver {
+    name = "docker-container"
+  }
+  bootstrap = true
+}
+
+resource "buildx_built" "foo" {
+  file = "testdata/Containerfile"
+  context = "."
+  output {
+    image {
+      name = "alpine:localfoo"
+    }
+  }
+  depends_on = [
+    buildx_instance.foo,
+  ]
+}`, rName)
 }
 
 func testAccBuiltLocal(rName, dir string) string {

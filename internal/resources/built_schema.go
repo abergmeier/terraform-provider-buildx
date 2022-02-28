@@ -61,7 +61,7 @@ func outputImageResource() *schema.Resource {
 		Schema: map[string]*schema.Schema{
 			"name": {
 				Type:        schema.TypeString,
-				Optional:    true,
+				Required:    true,
 				Description: "Image name",
 			},
 			"unpack": {
@@ -128,9 +128,10 @@ func outputEntry() *schema.Resource {
 	return &schema.Resource{
 		Schema: map[string]*schema.Schema{
 			client.ExporterDocker: {
-				Type:     schema.TypeSet,
+				Type:     schema.TypeList,
 				Elem:     outputDockerResource(),
 				Optional: true,
+				MaxItems: 1,
 				ForceNew: true,
 				ExactlyOneOf: []string{
 					"output.0." + client.ExporterDocker,
@@ -141,27 +142,31 @@ func outputEntry() *schema.Resource {
 				},
 			},
 			client.ExporterImage: {
-				Type:     schema.TypeSet,
+				Type:     schema.TypeList,
 				Elem:     outputImageResource(),
 				Optional: true,
+				MaxItems: 1,
 				ForceNew: true,
 			},
 			client.ExporterLocal: {
-				Type:     schema.TypeSet,
+				Type:     schema.TypeList,
 				Elem:     outputLocalResource(),
 				Optional: true,
+				MaxItems: 1,
 				ForceNew: true,
 			},
 			client.ExporterOCI: {
-				Type:     schema.TypeSet,
+				Type:     schema.TypeList,
 				Elem:     outputOciResource(),
 				Optional: true,
+				MaxItems: 1,
 				ForceNew: true,
 			},
 			client.ExporterTar: {
-				Type:     schema.TypeSet,
+				Type:     schema.TypeList,
 				Elem:     outputTarResource(),
 				Optional: true,
+				MaxItems: 1,
 				ForceNew: true,
 			},
 		},

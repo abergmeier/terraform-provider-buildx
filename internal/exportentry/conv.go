@@ -1,31 +1,43 @@
 package exportentry
 
 import (
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/moby/buildkit/client"
 )
 
 var (
 	Extractors = map[string]func(interface{}) ([]Entry, error){
-		client.ExporterDocker: toDockerExportEntry,
-		client.ExporterImage:  toImageExportEntry,
-		client.ExporterLocal:  toLocalExportEntry,
-		client.ExporterOCI:    toOCIExportEntry,
-		client.ExporterTar:    toTarExportEntry,
+		client.ExporterDocker: func(i interface{}) ([]Entry, error) {
+			return toExportEntries(i, toDockerExportEntry)
+		},
+		client.ExporterImage: func(i interface{}) ([]Entry, error) {
+			return toExportEntries(i, toImageExportEntry)
+		},
+		client.ExporterLocal: func(i interface{}) ([]Entry, error) {
+			return toExportEntries(i, toLocalExportEntry)
+		},
+		client.ExporterOCI: func(i interface{}) ([]Entry, error) {
+			return toExportEntries(i, toOCIExportEntry)
+		},
+		client.ExporterTar: func(i interface{}) ([]Entry, error) {
+			return toExportEntries(i, toTarExportEntry)
+		},
 	}
 )
 
-func toDockerExportEntry(i interface{}) ([]Entry, error) {
-	set := i.(*schema.Set)
-	res := make([]Entry, set.Len())
-	for i, di := range set.List() {
-		m := di.(map[string]interface{})
-		res[i].Type = client.ExporterDocker
-		toExportEntryStringValue(m, "dest", &res[i].Dest)
-		toExportEntryStringValue(m, "context", &res[i].Context)
+func toExportEntries(i interface{}, f func(map[string]interface{}) Entry) ([]Entry, error) {
+	l := i.([]interface{})
+	res := make([]Entry, len(l))
+	for i, di := range l {
+		res[i] = f(di.(map[string]interface{}))
 	}
-
 	return res, nil
+}
+
+func toDockerExportEntry(m map[string]interface{}) (res Entry) {
+	res.Type = client.ExporterDocker
+	toExportEntryStringValue(m, "dest", &res.Dest)
+	toExportEntryStringValue(m, "context", &res.Context)
+	return
 }
 
 func toExportEntryBoolValue(m map[string]interface{}, key string, v *bool) {
@@ -36,58 +48,34 @@ func toExportEntryBoolValue(m map[string]interface{}, key string, v *bool) {
 	*v = f.(bool)
 }
 
-func toImageExportEntry(i interface{}) ([]Entry, error) {
-	set := i.(*schema.Set)
-	res := make([]Entry, set.Len())
-	for i, di := range set.List() {
-		m := di.(map[string]interface{})
-		res[i].Type = client.ExporterImage
-		toExportEntryStringValue(m, "name", &res[i].Name)
-		toExportEntryBoolValue(m, "unpack", &res[i].Unpack)
-		toExportEntryStringValue(m, "compression", &res[i].Compression)
-		toExportEntryIntValue(m, "compression_level", &res[i].CompressionLevel)
-		toExportEntryBoolValue(m, "force_compression", &res[i].ForceCompression)
-		toExportEntryBoolValue(m, "use_oci_mediatypes", &res[i].OCIMediatypes)
-		toExportEntryStringValue(m, "buildinfo", &res[i].Buildinfo)
-	}
-
-	return res, nil
+func toImageExportEntry(m map[string]interface{}) (res Entry) {
+	res.Type = client.ExporterImage
+	toExportEntryStringValue(m, "name", &res.Name)
+	toExportEntryBoolValue(m, "unpack", &res.Unpack)
+	toExportEntryStringValue(m, "compression", &res.Compression)
+	toExportEntryIntValue(m, "compression_level", &res.CompressionLevel)
+	toExportEntryBoolValue(m, "force_compression", &res.ForceCompression)
+	toExportEntryBoolValue(m, "use_oci_mediatypes", &res.OCIMediatypes)
+	toExportEntryStringValue(m, "buildinfo", &res.Buildinfo)
+	return
 }
 
-func toLocalExportEntry(i interface{}) ([]Entry, error) {
-	set := i.(*schema.Set)
-	res := make([]Entry, set.Len())
-	for i, di := range set.List() {
-		m := di.(map[string]interface{})
-		res[i].Type = client.ExporterLocal
-		toExportEntryStringValue(m, "dest", &res[i].Dest)
-	}
-
-	return res, nil
+func toLocalExportEntry(m map[string]interface{}) (res Entry) {
+	res.Type = client.ExporterLocal
+	toExportEntryStringValue(m, "dest", &res.Dest)
+	return
 }
 
-func toOCIExportEntry(i interface{}) ([]Entry, error) {
-	set := i.(*schema.Set)
-	res := make([]Entry, set.Len())
-	for i, di := range set.List() {
-		m := di.(map[string]interface{})
-		res[i].Type = client.ExporterOCI
-		toExportEntryStringValue(m, "dest", &res[i].Dest)
-	}
-
-	return res, nil
+func toOCIExportEntry(m map[string]interface{}) (res Entry) {
+	res.Type = client.ExporterOCI
+	toExportEntryStringValue(m, "dest", &res.Dest)
+	return
 }
 
-func toTarExportEntry(i interface{}) ([]Entry, error) {
-	set := i.(*schema.Set)
-	res := make([]Entry, set.Len())
-	for i, di := range set.List() {
-		m := di.(map[string]interface{})
-		res[i].Type = client.ExporterTar
-		toExportEntryStringValue(m, "dest", &res[i].Dest)
-	}
-
-	return res, nil
+func toTarExportEntry(m map[string]interface{}) (res Entry) {
+	res.Type = client.ExporterTar
+	toExportEntryStringValue(m, "dest", &res.Dest)
+	return
 }
 
 func toExportEntryIntValue(m map[string]interface{}, key string, v *int) {

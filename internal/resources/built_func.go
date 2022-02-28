@@ -327,8 +327,11 @@ func deleteBuilt(ctx context.Context, d *schema.ResourceData, m interface{}) dia
 		return diag.FromErr(err)
 	}
 
+	iid := d.Get("iid").(string)
+	ctx = tflog.With(ctx, "iid", iid)
+
 	for _, output := range outputs {
-		err := deleteBuiltImage(ctx, dockerCli, output)
+		err := deleteBuiltImage(ctx, dockerCli, output, iid)
 		if err != nil {
 			return diag.FromErr(err)
 		}
@@ -348,14 +351,14 @@ func transportName(output exportentry.Entry) (string, error) {
 	case client.ExporterLocal:
 		transportName = "dir"
 	case client.ExporterImage:
-		transportName = "docker-archive"
+		transportName = "docker-daemon"
 	default:
 		return "", fmt.Errorf("unknown type: %s", output.Type)
 	}
 	return transportName, nil
 }
 
-func deleteBuiltImage(ctx context.Context, dockerCli command.Cli, output exportentry.Entry) error {
+func deleteBuiltImage(ctx context.Context, dockerCli command.Cli, output exportentry.Entry, iid string) error {
 
 	var reference string
 	switch output.Type {
@@ -364,10 +367,10 @@ func deleteBuiltImage(ctx context.Context, dockerCli command.Cli, output exporte
 	case client.ExporterOCI:
 		os.Remove(output.Dest)
 		return nil
+	case client.ExporterImage:
+		return nil
 	case client.ExporterTar:
 		reference = output.Dest
-	case client.ExporterImage:
-		panic("ME")
 	case client.ExporterLocal:
 		dir, err := ioutil.ReadDir(output.Dest)
 		if err != nil {
