@@ -5,19 +5,19 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/abergmeier/terraform-provider-buildx/internal/consolefile"
-	"github.com/abergmeier/terraform-provider-buildx/internal/meta"
 	"github.com/docker/buildx/commands"
 	"github.com/docker/buildx/driver"
 	"github.com/docker/buildx/store"
 	"github.com/docker/buildx/store/storeutil"
 	"github.com/docker/buildx/util/progress"
 	"github.com/docker/cli/cli/command"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/pkg/errors"
 )
 
@@ -41,70 +41,8 @@ type rmOptions struct {
 	keepState bool
 }
 
-func createInstance(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	dockerCli := m.(*meta.Data).Cli
-	tflog.Trace(ctx, "Getting the Store")
-	txn, release, err := storeutil.GetStore(dockerCli)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	defer release()
-
-	name, err := handleName(d, txn)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	args := []string{}
-	dockerContext := d.Get("context").(string)
-	dockerEndpoint := d.Get("endpoint").(string)
-	if dockerContext != "" {
-		args = append(args, dockerContext)
-	} else if dockerEndpoint != "" {
-		args = append(args, dockerEndpoint)
-	}
-
-	var flags []string
-	buildkits := d.Get("buildkit").(*schema.Set).List()
-	if len(buildkits) != 0 {
-		buildkit := buildkits[0].(map[string]interface{})
-
-		fi := buildkit["flags"].([]interface{})
-		flags = make([]string, len(fi))
-		for i, f := range fi {
-			flags[i] = f.(string)
-		}
-	}
-
-	driver := d.Get("driver").(*schema.Set).List()[0].(map[string]interface{})
-	oi := driver["opt"].(map[string]interface{})
-	opts := make(map[string]string, len(oi))
-	for k, v := range oi {
-		opts[k] = v.(string)
-	}
-
-	err = createInstanceFromOptions(ctx, dockerCli, txn, createOptions{
-		name:         name,
-		driver:       driver["name"].(string),
-		nodeName:     "",
-		driverOpts:   opts,
-		flags:        flags,
-		bootstrap:    d.Get("bootstrap").(bool),
-		platform:     []string{},
-		actionAppend: false,
-		actionLeave:  false,
-		use:          false,
-		configFile:   "",
-	}, args)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	d.SetId(fmt.Sprintf("%s_%s", dockerCli.DockerEndpoint().Host, name))
-	return nil
-}
-
-func handleName(d *schema.ResourceData, txn *store.Txn) (name string, err error) {
-	if d.Get("generate_name").(bool) {
+func handleNameAttributes(d *instanceResourceData, txn *store.Txn) (name string, err error) {
+	if !d.GenerateName.Null && d.GenerateName.Value {
 		name, err = store.GenerateName(txn)
 		if err != nil {
 			return "", err
@@ -112,23 +50,17 @@ func handleName(d *schema.ResourceData, txn *store.Txn) (name string, err error)
 		if name == "" {
 			panic("GenerateName call returned empty name!")
 		}
-		err = d.Set("generated_name", name)
-		if err != nil {
-			return "", err
-		}
-		err = d.Set("name", nil)
-		if err != nil {
-			return "", err
+		d.GeneratedName = types.String{
+			Value: name,
 		}
 	} else {
-		err = d.Set("generated_name", nil)
-		if err != nil {
-			return "", err
-		}
-		name = d.Get("name").(string)
-		if name == "" {
+		if d.Name.Null || d.Name.Value == "" {
 			return "", errors.New("Either generate_name needs to be set to true or a name needs to be specified.")
 		}
+		d.GeneratedName = types.String{
+			Null: true,
+		}
+		name = d.Name.Value
 	}
 
 	return
@@ -152,6 +84,9 @@ func createInstanceFromOptions(ctx context.Context, dockerCli command.Cli, txn *
 	if err != nil {
 		if os.IsNotExist(errors.Cause(err)) {
 		} else {
+			tflog.Error(ctx, "NodGroupByName failed", map[string]interface{}{
+				"name": name,
+			})
 			return err
 		}
 	}
@@ -241,33 +176,6 @@ func createInstanceFromOptions(ctx context.Context, dockerCli command.Cli, txn *
 	return nil
 }
 
-func deleteInstance(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	dockerCli := m.(*meta.Data).Cli
-	tflog.Trace(ctx, "Getting the Store")
-	txn, release, err := storeutil.GetStore(dockerCli)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	defer release()
-	name := d.Get("name").(string)
-	if name == "" {
-		name = d.Get("generated_name").(string)
-	}
-
-	buildkits := d.Get("buildkit").(*schema.Set).List()
-	keepState := false
-	if len(buildkits) != 0 {
-		buildkit := buildkits[0].(map[string]interface{})
-		keepState = buildkit["keep_state"].(bool)
-	}
-
-	err = deleteInstanceByName(ctx, dockerCli, txn, rmOptions{
-		builder:   name,
-		keepState: keepState,
-	})
-	return diag.FromErr(err)
-}
-
 func deleteInstanceByName(ctx context.Context, dockerCli command.Cli, txn *store.Txn, in rmOptions) error {
 
 	ctx = tflog.With(ctx, "nodegroup.name", in.builder)
@@ -286,26 +194,12 @@ func deleteInstanceByName(ctx context.Context, dockerCli command.Cli, txn *store
 	return err1
 }
 
-func readInstance(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	txn, release, err := storeutil.GetStore(m.(*meta.Data).Cli)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	defer release()
-	name := d.Get("name").(string)
-	if name == "" {
-		name = d.Get("generated_name").(string)
-	}
-	err = readInstanceByName(ctx, txn, name, d)
-	return diag.FromErr(err)
-}
-
-func readInstanceByName(ctx context.Context, txn *store.Txn, name string, d *schema.ResourceData) error {
+func readInstanceByName(ctx context.Context, txn *store.Txn, name string, d *instanceResourceData) (bool, error) {
 
 	tflog.Trace(ctx, "List")
 	ll, err := txn.List()
 	if err != nil {
-		return fmt.Errorf("Listing nodes failed: %w", err)
+		return false, fmt.Errorf("Listing nodes failed: %w", err)
 	}
 
 	ctx = tflog.With(ctx, "nodegroup.name", name)
@@ -314,12 +208,67 @@ func readInstanceByName(ctx context.Context, txn *store.Txn, name string, d *sch
 		tflog.Trace(ctx, "Found NodeGroup")
 		if ng.Name == name {
 			// Found
-			return nil
+			return true, nil
 		}
 	}
 
 	tflog.Trace(ctx, "NodeGroup not found")
 	// Seems like instance is gone
-	d.SetId("")
-	return nil
+	return false, nil
+}
+
+func atLeastOneOf(ln string, lf func() bool, rn string, rf func() bool) diag.Diagnostics {
+	l := lf()
+	r := rf()
+
+	if l || r {
+		return nil
+	}
+
+	allKeys := []string{
+		ln, rn,
+	}
+	return diag.Diagnostics{
+		diag.NewErrorDiagnostic("Missing attributes", fmt.Sprintf("one of `%s` must be specified", strings.Join(allKeys, ","))),
+	}
+}
+
+func exactlyOneOf(ln string, lf func() bool, rn string, rf func() bool) diag.Diagnostics {
+	diags := conflictsWith(ln, lf, rn, rf)
+	if diags.HasError() {
+		return diags
+	}
+
+	diags = atLeastOneOf(ln, lf, rn, rf)
+	return diags
+}
+
+func conflictsWithString(ln string, lv string, rn string, rv string) diag.Diagnostics {
+	if lv == "" || rv == "" {
+		return nil
+	}
+
+	allKeys := []string{
+		ln, rn,
+	}
+	specified := allKeys
+	return diag.Diagnostics{
+		diag.NewErrorDiagnostic("Conflicting attributes", fmt.Sprintf("only one of `%s` can be specified, but `%s` were specified.", strings.Join(allKeys, ","), strings.Join(specified, ","))),
+	}
+}
+
+func conflictsWith(ln string, lf func() bool, rn string, rf func() bool) diag.Diagnostics {
+	l := lf()
+	r := rf()
+	if !(l && r) {
+		return nil
+	}
+
+	allKeys := []string{
+		ln, rn,
+	}
+	specified := allKeys
+	return diag.Diagnostics{
+		diag.NewErrorDiagnostic("Conflicting attributes", fmt.Sprintf("only one of `%s` can be specified, but `%s` were specified.", strings.Join(allKeys, ","), strings.Join(specified, ","))),
+	}
 }

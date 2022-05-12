@@ -7,3 +7,7 @@ import (
 type Data struct {
 	Cli command.Cli
 }
+
+type HasData interface {
+	Data() *Data
+}

@@ -3,25 +3,12 @@ package datasources
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/docker/buildx/commands"
 	"github.com/docker/buildx/store/storeutil"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/context/store"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
-
-func readNodeGroup(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	name := d.Get("name").(string)
-	md, err := readNodeGroupByName(ctx, nil, name)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	d.Set("endpoints", md.Endpoints)
-	return nil
-}
 
 func readNodeGroupByName(ctx context.Context, dockerCli command.Cli, name string) (*store.Metadata, error) {
 	txn, release, err := storeutil.GetStore(dockerCli)
@@ -57,6 +44,5 @@ func readNodeGroupByName(ctx context.Context, dockerCli command.Cli, name string
 		return nil, fmt.Errorf("no NodeGroup with name %s found", name)
 	}
 
-	fmt.Fprintf(os.Stderr, "EP %#v", md.Endpoints)
 	return md, nil
 }

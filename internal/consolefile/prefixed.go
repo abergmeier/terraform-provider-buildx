@@ -7,7 +7,7 @@ import (
 	"github.com/containerd/console"
 )
 
-type tflogFunc func(ctx context.Context, msg string, args ...interface{})
+type tflogFunc func(ctx context.Context, msg string, additionalFields ...map[string]interface{})
 
 // WithPrefix wraps File so that all content gets written with tflog
 func WithPrefix(ctx context.Context, f console.File, fun tflogFunc) console.File {

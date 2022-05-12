@@ -5,30 +5,35 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/cmd/buildctl/build"
 )
 
-type Entry struct {
-	Type             string
-	Name             string
-	Context          string
-	Dest             string
-	OCIMediatypes    bool
-	Unpack           bool
-	Compression      string
-	CompressionLevel int
-	ForceCompression bool
-	Buildinfo        string
+type TypedEntry struct {
+	Entry
+	Type string
 }
 
-func (ex *Entry) ToBuildkit() (out client.ExportEntry, err error) {
+type Entry struct {
+	Name             types.String `tfsdk:"name"`
+	Context          types.String `tfsdk:"context"`
+	Dest             types.String `tfsdk:"dest"`
+	UseOCIMediatypes types.Bool   `tfsdk:"use_oci_mediatypes"`
+	Unpack           types.Bool   `tfsdk:"unpack"`
+	Compression      types.String `tfsdk:"compression"`
+	CompressionLevel types.Int64  `tfsdk:"compression_level"`
+	ForceCompression types.Bool   `tfsdk:"force_compression"`
+	Buildinfo        types.String `tfsdk:"buildinfo"`
+}
+
+func (ex *TypedEntry) ToBuildkit() (out client.ExportEntry, err error) {
 	if ex.Type == "" {
 		err = errors.New("unspecified type not supported")
 		return
 	}
 	exports := []string{
-		fmt.Sprintf("type=%s,dest=%s", ex.Type, ex.Dest),
+		fmt.Sprintf("type=%s,dest=%s", ex.Type, ex.Dest.Value),
 	}
 	parsed, err := build.ParseOutput(exports)
 	if err != nil {
@@ -39,14 +44,14 @@ func (ex *Entry) ToBuildkit() (out client.ExportEntry, err error) {
 	out.OutputDir = parsed[0].OutputDir
 	out.Type = ex.Type
 	attrs := make(map[string]string, 8)
-	setExportEntryStringValue(attrs, ex.Name, "name")
+	setExportEntryStringValue(attrs, ex.Name.Value, "name")
 	attrs["push"] = "false"
-	setExportEntryBoolValue(attrs, ex.OCIMediatypes, "oci-mediatypes")
-	setExportEntryBoolValue(attrs, ex.Unpack, "unpack")
-	setExportEntryStringValue(attrs, ex.Compression, "compression")
-	setExportEntryIntValue(attrs, ex.CompressionLevel, "compression-level")
-	setExportEntryBoolValue(attrs, ex.ForceCompression, "force-compression")
-	setExportEntryStringValue(attrs, ex.Buildinfo, "buildinfo")
+	setExportEntryBoolValue(attrs, ex.UseOCIMediatypes.Value, "oci-mediatypes")
+	setExportEntryBoolValue(attrs, ex.Unpack.Value, "unpack")
+	setExportEntryStringValue(attrs, ex.Compression.Value, "compression")
+	setExportEntryIntValue(attrs, int(ex.CompressionLevel.Value), "compression-level")
+	setExportEntryBoolValue(attrs, ex.ForceCompression.Value, "force-compression")
+	setExportEntryStringValue(attrs, ex.Buildinfo.Value, "buildinfo")
 	out.Attrs = attrs
 	return
 }

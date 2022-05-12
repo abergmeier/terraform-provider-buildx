@@ -2,10 +2,10 @@ package exportentry
 
 import "github.com/moby/buildkit/client"
 
-type Entries []Entry
+type TypedEntries []TypedEntry
 
-func (ex *Entries) ToBuildkit() (out []client.ExportEntry, err error) {
-	for _, e := range *ex {
+func (ex TypedEntries) ToBuildkit() (out []client.ExportEntry, err error) {
+	for _, e := range ex {
 		ee, err := e.ToBuildkit()
 		if err != nil {
 			return nil, err

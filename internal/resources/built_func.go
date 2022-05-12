@@ -10,11 +10,10 @@ import (
 
 	"github.com/abergmeier/terraform-provider-buildx/internal/consolefile"
 	"github.com/abergmeier/terraform-provider-buildx/internal/exportentry"
-	"github.com/abergmeier/terraform-provider-buildx/internal/meta"
 	"github.com/containers/common/pkg/retry"
 	"github.com/containers/image/v5/transports"
 	_ "github.com/containers/image/v5/transports/alltransports"
-	"github.com/containers/image/v5/types"
+	imagetypes "github.com/containers/image/v5/types"
 	"github.com/docker/buildx/build"
 	"github.com/docker/buildx/commands"
 	"github.com/docker/buildx/util/buildflags"
@@ -22,10 +21,7 @@ import (
 	"github.com/docker/buildx/util/tracing"
 	"github.com/docker/cli/cli/command"
 	dockeropts "github.com/docker/cli/opts"
-	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/session/auth/authprovider"
 	"github.com/moby/buildkit/util/appcontext"
@@ -45,7 +41,7 @@ type buildOptions struct {
 	imageIDFile  string
 	labels       map[string]string
 	networkMode  string
-	outputs      exportentry.Entries
+	outputs      []exportentry.TypedEntry
 	platforms    []string
 	secrets      []string
 	shmSize      dockeropts.MemBytes
@@ -74,53 +70,81 @@ type commonOptions struct {
 	// exportLoad bool
 }
 
-func toCacheEntry(ce []interface{}) []client.CacheOptionsEntry {
+func toCacheEntry(ce []cacheEntryData) []client.CacheOptionsEntry {
 	ces := make([]client.CacheOptionsEntry, len(ce))
 	for i, e := range ce {
-		m := e.(map[string]interface{})
+		if e.Type.Null {
+			panic(e.Type.Value)
+		}
 		ces[i] = client.CacheOptionsEntry{
-			Type:  m["type"].(string),
-			Attrs: toStringMap(m["attrs"].(map[string]interface{})),
+			Type:  e.Type.Value,
+			Attrs: e.Attrs,
 		}
 	}
 	return ces
 }
 
-func toOutputOptions(v interface{}) (exportentry.Entries, error) {
-	if v == nil {
+func toOutputOptions(ds *builtOutputData) ([]exportentry.TypedEntry, error) {
+	if ds == nil {
 		return nil, nil
 	}
 
-	vis := v.([]interface{})
-	out := make([]exportentry.Entry, 0, len(vis))
-	for i, v := range vis {
-		vd := v.(map[string]interface{})
-		for t, f := range exportentry.Extractors {
-			ei, _ := vd[t]
-			if ei == nil {
-				continue
-			}
-			l, err := f(ei)
-			if err != nil {
-				return nil, err
-			}
-			out = append(out, l...)
+	var outs []exportentry.TypedEntry
+
+	out := exportentry.TypedEntry{}
+	if ds.Docker != nil {
+		out.Context = ds.Docker.Context
+		out.Dest = ds.Docker.Dest
+		out.Type = client.ExporterDocker
+		outs = append(outs, out)
+	}
+
+	if ds.Image != nil {
+		out = exportentry.TypedEntry{
+			Entry: exportentry.Entry{
+				Name: ds.Image.Name,
+				// We intentionally do not support pushing
+			},
+			Type: client.ExporterImage,
+		}
+		outs = append(outs, out)
+	}
+
+	if ds.Local != nil {
+		out = exportentry.TypedEntry{
+			Entry: exportentry.Entry{
+				Dest: ds.Local.Dest,
+			},
+			Type: client.ExporterLocal,
+		}
+		outs = append(outs, out)
+	}
+
+	if ds.OCI != nil {
+		out = exportentry.TypedEntry{
+			Entry: exportentry.Entry{
+				Dest: ds.OCI.Dest,
+			},
+			Type: client.ExporterOCI,
+		}
+		outs = append(outs, out)
+	}
+
+	if ds.Tar != nil {
+		if ds.Tar.Dest.Null || ds.Tar.Dest.Value == "" {
+			return nil, fmt.Errorf("Type %s needs argument dest set", client.ExporterTar)
 		}
 
-		// We validate fields here since we cannot yet
-		// validate lists in Terraform
-		switch out[i].Type {
-		case client.ExporterDocker:
-			fallthrough
-		case client.ExporterOCI:
-			fallthrough
-		case client.ExporterTar:
-			if out[i].Dest == "" {
-				return nil, fmt.Errorf("Type %s needs argument dest set", out[i].Type)
-			}
+		out = exportentry.TypedEntry{
+			Entry: exportentry.Entry{
+				Dest: ds.Tar.Dest,
+			},
+			Type: client.ExporterTar,
 		}
+		outs = append(outs, out)
 	}
-	return out, nil
+
+	return outs, nil
 }
 
 func toStringMap(mi map[string]interface{}) map[string]string {
@@ -137,67 +161,6 @@ func toStringSlice(l []interface{}) []string {
 		sl[i] = s.(string)
 	}
 	return sl
-}
-
-func createBuilt(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	dockerCli := m.(*meta.Data).Cli
-
-	cacheList := d.Get("cache").(*schema.Set).List()
-	var cache map[string]interface{}
-	if len(cacheList) != 0 {
-		cache = cacheList[0].(map[string]interface{})
-	}
-	cacheFrom, _ := cache["from"].([]interface{})
-	cacheTo, _ := cache["to"].([]interface{})
-	al := d.Get("allow").(*schema.Set).List()
-	ct := d.Get("context").(string)
-	df := d.Get("file").(string)
-	ba := d.Get("build_args").(map[string]interface{})
-	ll := d.Get("labels").(map[string]interface{})
-	tg := d.Get("tags").([]interface{})
-	instance := d.Get("instance").(string)
-	outputs, err := toOutputOptions(d.Get("output"))
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	opt := buildOptions{
-		commonOptions: commonOptions{
-			builder: instance,
-		},
-		allow:          toStringSlice(al),
-		cacheFrom:      toCacheEntry(cacheFrom),
-		cacheTo:        toCacheEntry(cacheTo),
-		contextPath:    ct,
-		dockerfileName: df,
-		buildArgs:      toStringMap(ba),
-		labels:         toStringMap(ll),
-		tags:           toStringSlice(tg),
-		outputs:        outputs,
-	}
-
-	res, err := createBuiltWithOptions(dockerCli, opt)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	err = d.Set("iid", res.imageID)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	d.Set("metadata", res.metadata)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	// No better idea than to generate an id
-	uuid, err := uuid.NewRandom()
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	d.SetId(uuid.String())
-
-	return nil
 }
 
 type buildResult struct {
@@ -269,7 +232,7 @@ func createBuiltWithOptions(dockerCli command.Cli, in buildOptions) (res *buildR
 	opts.Session = append(opts.Session, ssh)
 
 	outputs := in.outputs
-	opts.Exports, err = outputs.ToBuildkit()
+	opts.Exports, err = exportentry.TypedEntries(outputs).ToBuildkit()
 	if err != nil {
 		return nil, err
 	}
@@ -320,26 +283,10 @@ func createBuiltWithOptions(dockerCli command.Cli, in buildOptions) (res *buildR
 	}, nil
 }
 
-func deleteBuilt(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	dockerCli := m.(*meta.Data).Cli
-	outputs, err := toOutputOptions(d.Get("output"))
-	if err != nil {
-		return diag.FromErr(err)
+func transportName(output exportentry.TypedEntry) (string, error) {
+	if output.Type == "" {
+		panic("Output type missing")
 	}
-
-	iid := d.Get("iid").(string)
-	ctx = tflog.With(ctx, "iid", iid)
-
-	for _, output := range outputs {
-		err := deleteBuiltImage(ctx, dockerCli, output, iid)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-	}
-	return nil
-}
-
-func transportName(output exportentry.Entry) (string, error) {
 	var transportName string
 	switch output.Type {
 	case client.ExporterDocker:
@@ -358,26 +305,29 @@ func transportName(output exportentry.Entry) (string, error) {
 	return transportName, nil
 }
 
-func deleteBuiltImage(ctx context.Context, dockerCli command.Cli, output exportentry.Entry, iid string) error {
+func deleteBuiltImage(ctx context.Context, dockerCli command.Cli, output exportentry.TypedEntry, iid string) error {
 
+	if output.Type == "" {
+		panic("Output type no set")
+	}
 	var reference string
 	switch output.Type {
 	case client.ExporterDocker:
 		fallthrough
 	case client.ExporterOCI:
-		os.Remove(output.Dest)
+		os.Remove(output.Dest.Value)
 		return nil
 	case client.ExporterImage:
 		return nil
 	case client.ExporterTar:
-		reference = output.Dest
+		reference = output.Dest.Value
 	case client.ExporterLocal:
-		dir, err := ioutil.ReadDir(output.Dest)
+		dir, err := ioutil.ReadDir(output.Dest.Value)
 		if err != nil {
-			return fmt.Errorf("deleting %s failed: %w", output.Dest, err)
+			return fmt.Errorf("deleting %s failed: %w", output.Dest.Value, err)
 		}
 		for _, d := range dir {
-			os.RemoveAll(path.Join([]string{output.Dest, d.Name()}...))
+			os.RemoveAll(path.Join([]string{output.Dest.Value, d.Name()}...))
 		}
 		return nil
 	default:
@@ -411,11 +361,6 @@ func deleteBuiltImage(ctx context.Context, dockerCli command.Cli, output exporte
 	})
 }
 
-func readBuilt(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	// TODO: Read local state
-	return nil
-}
-
 func enrichCacheEntry(in []client.CacheOptionsEntry) ([]client.CacheOptionsEntry, error) {
 	imports := make([]client.CacheOptionsEntry, 0, len(in))
 	for _, e := range in {
@@ -445,8 +390,8 @@ func addGithubToken(ci *client.CacheOptionsEntry) bool {
 	return ci.Attrs["token"] != "" && ci.Attrs["url"] != ""
 }
 
-func newSystemContext(dockerCli command.Cli, registryHostname string) (*types.SystemContext, error) {
-	ctx := &types.SystemContext{}
+func newSystemContext(dockerCli command.Cli, registryHostname string) (*imagetypes.SystemContext, error) {
+	ctx := &imagetypes.SystemContext{}
 	ac, err := dockerCli.ConfigFile().GetAuthConfig(registryHostname)
 	if err != nil {
 		return nil, err

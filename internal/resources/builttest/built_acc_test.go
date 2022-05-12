@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/abergmeier/terraform-provider-buildx/internal/testproviderfactory"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 )
@@ -22,7 +23,7 @@ func TestAccBuilt_docker(t *testing.T) {
 	rName := acctest.RandStringFromCharSet(10, acctest.CharSetAlphaNum)
 
 	resource.Test(t, resource.TestCase{
-		Providers: testAccProviders,
+		ProtoV6ProviderFactories: testproviderfactory.SingleFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBuiltDocker(rName, dir),
@@ -43,7 +44,7 @@ func TestAccBuilt_invalid_type(t *testing.T) {
 	rName := acctest.RandStringFromCharSet(10, acctest.CharSetAlphaNum)
 
 	resource.Test(t, resource.TestCase{
-		Providers: testAccProviders,
+		ProtoV6ProviderFactories: testproviderfactory.SingleFactories,
 		Steps: []resource.TestStep{
 			{
 				Config:      testAccBuiltInvalidOutputType(rName, dir),
@@ -65,7 +66,7 @@ func TestAccBuilt_image(t *testing.T) {
 	rName := acctest.RandStringFromCharSet(10, acctest.CharSetAlphaNum)
 
 	resource.Test(t, resource.TestCase{
-		Providers: testAccProviders,
+		ProtoV6ProviderFactories: testproviderfactory.SingleFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBuiltImage(rName, dir),
@@ -86,7 +87,7 @@ func TestAccBuilt_local(t *testing.T) {
 	rName := acctest.RandStringFromCharSet(10, acctest.CharSetAlphaNum)
 
 	resource.Test(t, resource.TestCase{
-		Providers: testAccProviders,
+		ProtoV6ProviderFactories: testproviderfactory.SingleFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBuiltLocal(rName, dir),
@@ -107,7 +108,7 @@ func TestAccBuilt_oci(t *testing.T) {
 	rName := acctest.RandStringFromCharSet(10, acctest.CharSetAlphaNum)
 
 	resource.Test(t, resource.TestCase{
-		Providers: testAccProviders,
+		ProtoV6ProviderFactories: testproviderfactory.SingleFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBuiltOci(rName, dir),
@@ -128,7 +129,7 @@ func TestAccBuilt_tar(t *testing.T) {
 	rName := acctest.RandStringFromCharSet(10, acctest.CharSetAlphaNum)
 
 	resource.Test(t, resource.TestCase{
-		Providers: testAccProviders,
+		ProtoV6ProviderFactories: testproviderfactory.SingleFactories,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBuiltTar(rName, dir),
@@ -142,17 +143,17 @@ func testAccBuiltDocker(rName, dir string) string {
 	return fmt.Sprintf(`
 resource "buildx_instance" "foo" {
   name = "test-basic-%s"
-  driver {
+  driver = {
     name = "docker-container"
   }
   bootstrap = true
 }
 
 resource "buildx_built" "foo" {
-  file = "testdata/Containerfile"
+  file    = "testdata/Containerfile"
   context = "."
-  output {
-    docker {
+  output = {
+    docker = {
       dest = "%s/image.docker"
     }
   }
@@ -165,14 +166,14 @@ func testAccBuiltInvalidOutputType(rName, dir string) string {
 	return fmt.Sprintf(`
 resource "buildx_instance" "foo" {
   name = "test-basic-%s"
-  driver {
+  driver = {
     name = "docker-container"
   }
   bootstrap = true
 }
 
 resource "buildx_built" "foo" {
-  file = "testdata/Containerfile"
+  file    = "testdata/Containerfile"
   context = "."
   output {
     dir {
@@ -190,23 +191,21 @@ func testAccBuiltImage(rName, dir string) string {
 	return fmt.Sprintf(`
 resource "buildx_instance" "foo" {
   name = "test-basic-%s"
-  driver {
+  driver = {
     name = "docker-container"
   }
   bootstrap = true
 }
 
 resource "buildx_built" "foo" {
-  file = "testdata/Containerfile"
+  file    = "testdata/Containerfile"
   context = "."
-  output {
-    image {
+  output = {
+    image = {
       name = "alpine:localfoo"
     }
   }
-  depends_on = [
-    buildx_instance.foo,
-  ]
+  instance = buildx_instance.foo.name
 }`, rName)
 }
 
@@ -214,23 +213,21 @@ func testAccBuiltLocal(rName, dir string) string {
 	return fmt.Sprintf(`
 resource "buildx_instance" "foo" {
   name = "test-basic-%s"
-  driver {
+  driver = {
     name = "docker-container"
   }
   bootstrap = true
 }
 
 resource "buildx_built" "foo" {
-  file = "testdata/Containerfile"
+  file    = "testdata/Containerfile"
   context = "."
-  output {
-    local {
+  output = {
+    local = {
       dest = "%s"
     }
   }
-  depends_on = [
-    buildx_instance.foo,
-  ]
+  instance = buildx_instance.foo.name
 }
 `, rName, dir)
 }
@@ -239,7 +236,7 @@ func testAccBuiltOci(rName, dir string) string {
 	return fmt.Sprintf(`
 resource "buildx_instance" "foo" {
   name = "test-basic-%s"
-  driver {
+  driver = {
     name = "docker-container"
   }
   bootstrap = true
@@ -249,8 +246,8 @@ resource "buildx_built" "foo" {
   instance = buildx_instance.foo.name
   file     = "testdata/Containerfile"
   context  = "."
-  output {
-    oci {
+  output = {
+    oci = {
       dest = "%s/oci.tar"
     }
   }
@@ -262,23 +259,21 @@ func testAccBuiltTar(rName, dir string) string {
 	return fmt.Sprintf(`
 resource "buildx_instance" "foo" {
   name = "test-basic-%s"
-  driver {
+  driver = {
     name = "docker-container"
   }
   bootstrap = true
 }
 
 resource "buildx_built" "foo" {
-  file = "testdata/Containerfile"
+  file    = "testdata/Containerfile"
   context = "."
-  output {
-    tar {
+  output = {
+    tar = {
       dest = "%s/test.tar"
     }
   }
-  depends_on = [
-    buildx_instance.foo,
-  ]
+  instance = buildx_instance.foo.name
 }
 `, rName, dir)
 }

@@ -9,8 +9,8 @@ import (
 	"github.com/docker/cli/cli/command"
 
 	cliflags "github.com/docker/cli/cli/flags"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 
 	// Register drivers
 	_ "github.com/docker/buildx/driver/docker"
@@ -18,45 +18,71 @@ import (
 	_ "github.com/docker/buildx/driver/kubernetes"
 )
 
-func Provider() *schema.Provider {
-	provider := &schema.Provider{
-		DataSourcesMap: map[string]*schema.Resource{
-			"buildx_nodegroup": datasources.NodeGroupDataSource(),
-		},
-		ResourcesMap: map[string]*schema.Resource{
-			"buildx_built":    resources.BuiltResource(),
-			"buildx_instance": resources.InstanceResource(),
-		},
-		Schema: map[string]*schema.Schema{},
-	}
-	provider.ConfigureContextFunc = func(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
-		// Shameless plug from https://github.com/terraform-providers/terraform-provider-aws/blob/d51784148586f605ab30ecea268e80fe83d415a9/aws/provider.go
-		terraformVersion := provider.TerraformVersion
-		if terraformVersion == "" {
-			// Terraform 0.12 introduced this field to the protocol
-			// We can therefore assume that if it's missing it's 0.10 or 0.11
-			terraformVersion = "0.11+compatible"
-		}
-		return providerConfigure(ctx, d, terraformVersion)
-	}
-	return provider
+type provider struct {
+	data *meta.Data
+
+	// version is set to the provider version on release, "dev" when the
+	// provider is built and ran locally, and "test" when running acceptance
+	// testing.
+	version string
 }
 
-func providerConfigure(ctx context.Context, d *schema.ResourceData, terraformVersion string) (interface{}, diag.Diagnostics) {
+type providerConfig struct {
+}
+
+func New(version string) func() tfsdk.Provider {
+	return func() tfsdk.Provider {
+		return &provider{
+			version: version,
+		}
+	}
+}
+
+func (p *provider) Data() *meta.Data {
+	return p.data
+}
+
+func (p *provider) Configure(ctx context.Context, req tfsdk.ConfigureProviderRequest, resp *tfsdk.ConfigureProviderResponse) {
+	var config providerConfig
+	diags := req.Config.Get(ctx, &config)
+	resp.Diagnostics.Append(diags...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	dockerCli, err := command.NewDockerCli()
 	if err != nil {
-		return nil, diag.FromErr(err)
+		resp.Diagnostics.AddError("Creating Docker Cli failed", err.Error())
+		return
 	}
 	opts := cliflags.NewClientOptions()
 	err = dockerCli.Initialize(opts)
 	if err != nil {
-		return nil, diag.FromErr(err)
+		resp.Diagnostics.AddError("Initializing Docker Cli failed", err.Error())
+		return
 	}
 
-	m := &meta.Data{
+	p.data = &meta.Data{
 		Cli: dockerCli,
 	}
+}
 
-	return m, nil
+func (p *provider) GetResources(ctx context.Context) (map[string]tfsdk.ResourceType, diag.Diagnostics) {
+	return map[string]tfsdk.ResourceType{
+		"buildx_built": resources.BuiltType,
+		// We use instance as a resource so we can import already present
+		// instances
+		"buildx_instance": resources.InstanceType,
+	}, nil
+}
+
+func (p *provider) GetDataSources(ctx context.Context) (map[string]tfsdk.DataSourceType, diag.Diagnostics) {
+	return map[string]tfsdk.DataSourceType{
+		"buildx_nodegroup": datasources.NodeGroupType,
+	}, nil
+}
+
+func (p *provider) GetSchema(ctx context.Context) (tfsdk.Schema, diag.Diagnostics) {
+	return tfsdk.Schema{}, nil
 }
