@@ -1,6 +1,6 @@
 module github.com/abergmeier/terraform-provider-buildx
 
-go 1.17
+go 1.18
 
 require (
 	github.com/containerd/console v1.0.3
