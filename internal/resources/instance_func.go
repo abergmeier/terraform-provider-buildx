@@ -2,7 +2,9 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"os"
 	"strings"
@@ -18,7 +20,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/pkg/errors"
 )
 
 type createOptions struct {
@@ -73,7 +74,7 @@ func createInstanceFromOptions(ctx context.Context, dockerCli command.Cli, txn *
 	ctx = tflog.With(ctx, "driver.name", driverName)
 	tflog.Trace(ctx, "Get Factory for Driver")
 	if driver.GetFactory(driverName, true) == nil {
-		return errors.Errorf("failed to find driver %q", in.driver)
+		return fmt.Errorf("failed to find driver %q", in.driver)
 	}
 
 	name := in.name
@@ -82,7 +83,7 @@ func createInstanceFromOptions(ctx context.Context, dockerCli command.Cli, txn *
 	tflog.Trace(ctx, "Get NodeGroup")
 	ng, err := txn.NodeGroupByName(name)
 	if err != nil {
-		if os.IsNotExist(errors.Cause(err)) {
+		if errors.Is(err, fs.ErrNotExist) {
 		} else {
 			tflog.Error(ctx, "NodGroupByName failed", map[string]interface{}{
 				"name": name,
@@ -92,7 +93,7 @@ func createInstanceFromOptions(ctx context.Context, dockerCli command.Cli, txn *
 	}
 
 	if ng != nil {
-		return errors.Errorf("existing instance for %s but no append mode, specify --node to make changes for existing instances", name)
+		return fmt.Errorf("existing instance for %s but no append mode, specify --node to make changes for existing instances", name)
 	}
 
 	ng = &store.NodeGroup{
@@ -116,7 +117,7 @@ func createInstanceFromOptions(ctx context.Context, dockerCli command.Cli, txn *
 		}
 	} else {
 		if dockerCli.CurrentContext() == "default" && dockerCli.DockerEndpoint().TLSData != nil {
-			return errors.Errorf("could not create a builder instance with TLS data loaded from environment. Please use `docker context create <context-name>` to create a context for current environment and then create a builder instance with `docker buildx create <context-name>`")
+			return errors.New("could not create a builder instance with TLS data loaded from environment. Please use `docker context create <context-name>` to create a context for current environment and then create a builder instance with `docker buildx create <context-name>`")
 		}
 
 		tflog.Trace(ctx, "Get Endpoint")

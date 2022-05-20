@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -25,7 +26,6 @@ import (
 	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/session/auth/authprovider"
 	"github.com/moby/buildkit/util/appcontext"
-	"github.com/pkg/errors"
 )
 
 type buildOptions struct {
@@ -340,7 +340,7 @@ func deleteBuiltImage(ctx context.Context, dockerCli command.Cli, output exporte
 	}
 	transport := transports.Get(transportName)
 	if transport == nil {
-		return errors.Errorf(`Invalid output, unknown transport "%s". Known transports are: %v`, transportName, transports.ListNames())
+		return fmt.Errorf(`Invalid output, unknown transport "%s". Known transports are: %v`, transportName, transports.ListNames())
 	}
 	ref, err := transport.ParseReference(reference)
 	if err != nil {
