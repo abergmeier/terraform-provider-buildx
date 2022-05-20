@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/abergmeier/terraform-provider-buildx/internal/testproviderfactory"
@@ -27,7 +28,10 @@ func TestAccBuilt_docker(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBuiltDocker(rName, dir),
-				Check:  resource.ComposeTestCheckFunc(),
+				Check: resource.ComposeTestCheckFunc(
+					testCheckResourceAttrPrefix("buildx_built.foo", "iid", "sha256:"),
+					testCheckResourceAttrLen("buildx_built.foo", "iid", 71),
+				),
 			},
 		},
 	})
@@ -276,4 +280,30 @@ resource "buildx_built" "foo" {
   instance = buildx_instance.foo.name
 }
 `, rName, dir)
+}
+
+func testCheckResourceAttrPrefix(name, key, prefix string) resource.TestCheckFunc {
+
+	checkValueFunc := func(value string) error {
+		if !strings.HasPrefix(value, prefix) {
+			return fmt.Errorf("Resource attribute `%s` does not have prefix `%s`.", key, value)
+		}
+
+		return nil
+	}
+
+	return resource.TestCheckResourceAttrWith(name, key, checkValueFunc)
+}
+
+func testCheckResourceAttrLen(name, key string, expectedLen int) resource.TestCheckFunc {
+
+	checkValueFunc := func(value string) error {
+		if len(value) != expectedLen {
+			return fmt.Errorf("Resource attribute `%s` does not have length %d.", key, expectedLen)
+		}
+
+		return nil
+	}
+
+	return resource.TestCheckResourceAttrWith(name, key, checkValueFunc)
 }
